@@ -1,0 +1,34 @@
+{
+	"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+	"type": "AdaptiveCard",
+	"version": "1.0",
+	"body": [
+		{
+			"type": "Container",
+			"items": [
+				{
+					"type": "TextBlock",
+					"text": "There are {{resultcount}} drinks that meet this criteria.  You can refine further by type of ingredient, type of glass or drink category",
+					"wrap": true
+				},
+				{
+					"type": "FactSet",
+					"facts": [
+						{
+							"title": "Drink Type:",
+							"value": "{{type}}"
+						},
+						{
+							"title": "Glass Type:",
+							"value": "{{glass}}"
+						},
+						{
+							"title": "Ingredients:",
+							"value": "{{ingredients}}"
+						}
+					]
+				}
+			]
+		}
+	]
+}
