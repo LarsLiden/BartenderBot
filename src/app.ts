@@ -23,7 +23,7 @@ console.log(`BotPort: ${config.botPort} / ${server.name} ${server.url}`)
 server.on('uncaughtException', (req, res, route, err) => {
     console.log(err); // Logs the error
  });
- 
+
 server.listen(config.botPort, () => {
     console.log(`${server.name} listening to ${server.url}`);
 });
@@ -651,11 +651,16 @@ cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManag
 //=================================
 
 server.post('/api/messages', (req, res) => {
-    adapter.processActivity(req, res, async context => {
-        let result = await cl.recognize(context)
-        
-        if (result) {
-            cl.SendResult(result);
-        }
-    })
+    try {
+        adapter.processActivity(req, res, async context => {
+            let result = await cl.recognize(context)
+            
+            if (result) {
+                cl.SendResult(result);
+            }
+        })
+    }
+    catch (error) {
+        console.log(JSON.stringify(error))
+    }
 })
