@@ -18,6 +18,8 @@ const server = restify.createServer({
     name: 'BOT Server'
 });
 
+console.log(`BotPort: ${config.botPort}`)
+
 server.listen(config.botPort, () => {
     console.log(`${server.name} listening to ${server.url}`);
 });
