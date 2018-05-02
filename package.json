@@ -40,5 +40,5 @@
     "execa": "^0.9.0",
     "typescript": "^2.6.2"
   },
-  "engines":{"node": "0.8.x"}
+  "engines":{"node": "8.8.0"}
 }
