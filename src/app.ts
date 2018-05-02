@@ -18,8 +18,12 @@ const server = restify.createServer({
     name: 'BOT Server'
 });
 
-console.log(`BotPort: ${config.botPort}`)
+console.log(`BotPort: ${config.botPort} / ${server.name} ${server.url}`)
 
+server.on('uncaughtException', (req, res, route, err) => {
+    console.log(err); // Logs the error
+ });
+ 
 server.listen(config.botPort, () => {
     console.log(`${server.name} listening to ${server.url}`);
 });
