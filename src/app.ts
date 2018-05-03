@@ -7,7 +7,7 @@ import * as restify from 'restify'
 import * as BB from 'botbuilder'
 import * as request from 'request'
 import { BotFrameworkAdapter } from 'botbuilder'
-import { ConversationLearner, ClientMemoryManager, models, FileStorage } from 'conversationlearner-sdk'
+import { ConversationLearner, ClientMemoryManager, models, FileStorage } from '@conversationlearner/sdk'
 import config from './config'
 import { v1String } from 'uuid/interfaces';
 
@@ -49,24 +49,6 @@ let fileStorage = new FileStorage(path.join(__dirname, 'storage'))
 //==================================
 ConversationLearner.Init(clOptions, fileStorage);
 let cl = new ConversationLearner(clAppId);
-
-//=========================================================
-// Bots Buisness Logic
-//=========================================================
-let cities = ['new york', 'boston', 'new orleans'];
-let cityMap:{ [index:string] : string } = {};
-cityMap['big apple'] = 'new york';
-cityMap['windy city'] = 'chicago';
-
-var resolveCity = function(cityFromUser: string) {
-    if (cities.indexOf(cityFromUser) > -1) {
-        return cityFromUser;
-    } else if (cityFromUser in cityMap) {
-        return cityMap[cityFromUser];
-    } else {
-        return null;
-    }
-}
 
 //===============================
 // Cocktail 
@@ -111,7 +93,17 @@ export interface IDrink {
     strMeasure10: string,
 }
 
-let cache: {[key: string]: any} = {};
+export class Cache {
+    private static cache: {[key: string]: any} = {};
+
+    static Set(key: string, value: object) : void {
+        this.cache[key] = value;
+    }
+
+    static Get(key: string) : any {
+        return this.cache[key];
+    }
+}
 
 export function generateFilter(ingredient: string, category: string | null, type: string | null, glass: string | null): string {
     let filter = ""; 
@@ -245,8 +237,9 @@ export function renderDrink(drink: IDrink) {
 export function getcocktails(filter: string): Promise<string[]> {
     return new Promise((resolve, reject) => {
         const path = `http://www.thecocktaildb.com/api/json/v1/1/filter.php?${filter}`;
-        if (cache[path]) {
-            resolve(cache[path]);
+        let cachedValue = Cache.Get(path);
+        if (cachedValue) {
+            resolve(cachedValue as string[]);
             return;
         }
         request(path, function (error, response, body) {
@@ -262,8 +255,8 @@ export function getcocktails(filter: string): Promise<string[]> {
                     for (let drink of result.drinks) {
                         cockIds.push(drink.idDrink)
                     }
+                    Cache.Set(path, cockIds.slice())
                     resolve(cockIds)
-                    cache[path] = cockIds;
                 }
                 else {
                     resolve([]);
@@ -276,8 +269,9 @@ export function getcocktails(filter: string): Promise<string[]> {
 export function getCocktailByName(cocktail: string): Promise<IDrink[]> {
     return new Promise((resolve, reject) => {
         const path = `http://www.thecocktaildb.com/api/json/v1/1/search.php?s=${cocktail}`;
-        if (cache[path]) {
-            resolve(cache[path]);
+        let cachedValue = Cache.Get(path);
+        if (cachedValue) {
+            resolve(cachedValue as IDrink[]);
             return;
         }
         request(path, function (error, response, body) {
@@ -290,12 +284,12 @@ export function getCocktailByName(cocktail: string): Promise<IDrink[]> {
                 try {
                     if (body != "") {
                         let result = JSON.parse(body) as IDrinks;
+                        Cache.Set(path, result.drinks)
                         resolve(result.drinks)
-                        cache[path] = result.drinks
                     }
                     else {
-                        resolve([]);
-                        cache[path] = [];
+                        Cache.Set(path, []);
+                        resolve([]); 
                     }
                 }
                 catch (err) {
@@ -309,8 +303,9 @@ export function getCocktailByName(cocktail: string): Promise<IDrink[]> {
 export function getCocktailById(cockId: string): Promise<IDrink | null> {
     return new Promise((resolve, reject) => {
         const path = `http://www.thecocktaildb.com/api/json/v1/1/lookup.php?i=${cockId}`;
-        if (cache[path]) {
-            resolve(cache[path]);
+        let cachedValue = Cache.Get(path);
+        if (cachedValue) {
+            resolve(cachedValue as IDrink | null);
             return;
         }
         request(path, function (error, response, body) {
@@ -324,8 +319,8 @@ export function getCocktailById(cockId: string): Promise<IDrink | null> {
                     if (body != "") {
                         let result = JSON.parse(body) as IDrinks;
                         if (result && result.drinks) {
+                            Cache.Set(path,result.drinks[0])
                             resolve(result.drinks[0])
-                            cache[path]=result.drinks[0];
                         }
                         else {
                             resolve(null);
@@ -373,21 +368,6 @@ export function getGlasses(): Promise<string[]> {
     });
 }
 
-cl.AddAPICallback("ShowGlasses", async (memoryManager: ClientMemoryManager) => {
-    let glasses = await getGlasses();
-    return glasses.join(", ");
-})
-
-cl.AddAPICallback("ClearSearch", async (memoryManager: ClientMemoryManager) => {
-    await memoryManager.ForgetEntityAsync("cocktails");
-    await memoryManager.ForgetEntityAsync("resultcount");
-    await memoryManager.ForgetEntityAsync("NeedRefine");
-    await memoryManager.ForgetEntityAsync("category");
-    await memoryManager.ForgetEntityAsync("glass");
-    await memoryManager.ForgetEntityAsync("type");
-    await memoryManager.ForgetEntityAsync("ingredients");
-})
-
 let categoryNames: string[] = [];
 export function getCategories(): Promise<string[]> {
     return new Promise((resolve, reject) => {
@@ -418,10 +398,6 @@ export function getCategories(): Promise<string[]> {
     });
 }
 
-cl.AddAPICallback("ShowCategories", async (memoryManager: ClientMemoryManager) => {
-    let categories = await getCategories();
-    return categories.join(", ");
-})
 
 let ingredientNames: string[] = [];
 export function getIngredients(): Promise<string[]> {
@@ -454,23 +430,51 @@ export function getIngredients(): Promise<string[]> {
     });
 }
 
-cl.AddAPICallback("ShowIngredients", async (memoryManager: ClientMemoryManager) => {
-    let ingredients = await getIngredients();
-    return ingredients.join(", ");
-})
-
 export async function setCocktails(cocktailIds: string[], memoryManager: ClientMemoryManager) {
+    await memoryManager.ForgetEntityAsync("noresults");
     await memoryManager.RememberEntityAsync("resultcount", cocktailIds.length);
 
+    if (cocktailIds.length === 0) {
+        await memoryManager.RememberEntityAsync("noresults", "true");
+        await memoryManager.ForgetEntityAsync("cocktails");
+    }
     if (cocktailIds.length > 5) {
         await memoryManager.RememberEntityAsync("NeedRefine", "true");
         await memoryManager.ForgetEntityAsync("cocktails");
     }
     else {
         await memoryManager.ForgetEntityAsync("NeedRefine")
+        await memoryManager.ForgetEntityAsync("noresults");
         await memoryManager.RememberEntitiesAsync("cocktails", cocktailIds);
     }
 }
+
+
+
+cl.AddAPICallback("ShowGlasses", async (memoryManager: ClientMemoryManager) => {
+    let glasses = await getGlasses();
+    return glasses.join(", ");
+})
+
+cl.AddAPICallback("ClearSearch", async (memoryManager: ClientMemoryManager) => {
+    await memoryManager.ForgetEntityAsync("cocktails");
+    await memoryManager.ForgetEntityAsync("resultcount");
+    await memoryManager.ForgetEntityAsync("NeedRefine");
+    await memoryManager.ForgetEntityAsync("category");
+    await memoryManager.ForgetEntityAsync("glass");
+    await memoryManager.ForgetEntityAsync("type");
+    await memoryManager.ForgetEntityAsync("ingredients");
+})
+
+cl.AddAPICallback("ShowCategories", async (memoryManager: ClientMemoryManager) => {
+    let categories = await getCategories();
+    return categories.join(", ");
+})
+
+cl.AddAPICallback("ShowIngredients", async (memoryManager: ClientMemoryManager) => {
+    let ingredients = await getIngredients();
+    return ingredients.join(", ");
+})
 
 cl.AddAPICallback("GetCocktails", async (memoryManager: ClientMemoryManager) => {
 
@@ -498,7 +502,7 @@ cl.AddAPICallback("GetCocktails", async (memoryManager: ClientMemoryManager) => 
         for (let id of allIds) {
             let isWinner = true;
             let count = 0;
-            filterResults.forEach(f => count += (f.indexOf(id)+1))
+            filterResults.forEach(f => count += (f.indexOf(id)>-1) ? 1:0)
             if (count === ingredients.length)
             {
                 winners.push(id);
@@ -558,7 +562,8 @@ cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManag
         await memoryManager.ForgetEntityAsync("NeedRefine");
         await memoryManager.ForgetEntityAsync("cocktails");
         await memoryManager.ForgetEntityAsync("resultcount");
-    
+        await memoryManager.ForgetEntityAsync("noresults");
+        
         // Process the most recent input first
         inputs = inputs.reverse();
 

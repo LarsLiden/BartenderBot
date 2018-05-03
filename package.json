@@ -26,7 +26,7 @@
   "license": "MIT",
   "dependencies": {
     "botbuilder": "^4.0.0-m4.1",
-    "conversationlearner-sdk": "0.232.0",
+    "@conversationlearner/sdk": "0.234.0",
     "convict": "^4.0.2",
     "dotenv": "^4.0.0",
     "restify": "^6.3.2",
@@ -40,5 +40,7 @@
     "execa": "^0.9.0",
     "typescript": "^2.6.2"
   },
-  "engines":{"node": "8.8.0"}
+  "engines": {
+    "node": "8.8.0"
+  }
 }
