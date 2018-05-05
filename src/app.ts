@@ -526,9 +526,10 @@ async function Disambiguate(memoryManager: ClientMemoryManager, input: string, d
         }
     }
     else if (refined.length > 1) {
+        await memoryManager.RememberEntityAsync("DisambigItem", input)
         await memoryManager.RememberEntitiesAsync("DisambigInputs", refined);
         disambigInputs = [];
-        return true;
+        return false;
     }
     return false;
 }
@@ -641,7 +642,7 @@ cl.AddAPICallback("ShowCocktails", async (memoryManager: ClientMemoryManager) =>
     message.attachmentLayout = "carousel"
 
     await Reset(memoryManager);
-    
+
     return message
 })
 
@@ -657,6 +658,7 @@ cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManag
     // Clear disambig only if last result wasn't unknown
     if (!unknownInput) {
         await memoryManager.ForgetEntityAsync("DisambigInputs");
+        await memoryManager.ForgetEntityAsync("DisambigItem")
     }
     
     let chosenIngredients = await memoryManager.EntityValueAsListAsync("ingredients") as string[];
@@ -744,6 +746,7 @@ cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManag
                 }
                 else if (foundCount > 1) {
                     let choices = foundIngredients.concat(foundCategories, foundGlasses, foundCocktails)
+                    await memoryManager.RememberEntityAsync("DisambigItem", input)
                     await memoryManager.RememberEntitiesAsync("DisambigInputs", choices);
                     break;
                 }
