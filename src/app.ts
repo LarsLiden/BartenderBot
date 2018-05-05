@@ -533,12 +533,7 @@ async function Disambiguate(memoryManager: ClientMemoryManager, input: string, d
     return false;
 }
 
-cl.AddAPICallback("ShowGlasses", async (memoryManager: ClientMemoryManager) => {
-    let glasses = await getGlasses();
-    return glasses.join(", ");
-})
-
-cl.AddAPICallback("ClearSearch", async (memoryManager: ClientMemoryManager) => {
+export async function Reset(memoryManager: ClientMemoryManager) {
     await memoryManager.ForgetEntityAsync("cocktails");
     await memoryManager.ForgetEntityAsync("resultcount");
     await memoryManager.ForgetEntityAsync("NeedRefine");
@@ -547,6 +542,16 @@ cl.AddAPICallback("ClearSearch", async (memoryManager: ClientMemoryManager) => {
     await memoryManager.ForgetEntityAsync("type");
     await memoryManager.ForgetEntityAsync("ingredients");
     await memoryManager.ForgetEntityAsync("noresults");
+    await memoryManager.ForgetEntityAsync("suggestions");
+}
+
+cl.AddAPICallback("ShowGlasses", async (memoryManager: ClientMemoryManager) => {
+    let glasses = await getGlasses();
+    return glasses.join(", ");
+})
+
+cl.AddAPICallback("ClearSearch", async (memoryManager: ClientMemoryManager) => {
+  await Reset(memoryManager)
 })
 
 cl.AddAPICallback("ShowCategories", async (memoryManager: ClientMemoryManager) => {
@@ -634,6 +639,9 @@ cl.AddAPICallback("ShowCocktails", async (memoryManager: ClientMemoryManager) =>
     const message = BB.MessageFactory.list(attachments)
     message.text = undefined
     message.attachmentLayout = "carousel"
+
+    await Reset(memoryManager);
+    
     return message
 })
 
