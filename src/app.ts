@@ -105,7 +105,7 @@ export class Cache {
     }
 }
 
-export function generateFilter(ingredient: string, category: string | null, type: string | null, glass: string | null): string {
+export function generateFilter(ingredient: string | null, category: string | null, type: string | null, glass: string | null): string {
     let filter = ""; 
     let haveFirst = false;
 
@@ -117,7 +117,7 @@ export function generateFilter(ingredient: string, category: string | null, type
         filter += `${haveFirst ? '&' : ''}a=${type}`
         haveFirst = true;
     }
-    if (type) {
+    if (glass) {
         filter += `${haveFirst ? '&' : ''}g=${glass}`
         haveFirst = true;
     }
@@ -438,7 +438,8 @@ export async function setCocktails(cocktailIds: string[], memoryManager: ClientM
         await memoryManager.RememberEntityAsync("noresults", "true");
         await memoryManager.ForgetEntityAsync("cocktails");
     }
-    if (cocktailIds.length > 5) {
+    else if (cocktailIds.length > 5) {
+        await memoryManager.ForgetEntityAsync("noresults");
         await memoryManager.RememberEntityAsync("NeedRefine", "true");
         await memoryManager.ForgetEntityAsync("cocktails");
     }
@@ -449,7 +450,53 @@ export async function setCocktails(cocktailIds: string[], memoryManager: ClientM
     }
 }
 
+async function Disambiguate(memoryManager: ClientMemoryManager, input: string, disambigInputs: string[]) : Promise<boolean> {
 
+    let allIngredients = await getIngredients();
+    let allCategories = await getCategories();
+    let allGlasses = await getGlasses();
+
+    // Look for exact match (i.e. plain "Vodka" in list of many vodka types)
+    let refined = disambigInputs.filter(n => n.toLowerCase() == input);
+    if (refined.length == 0) {
+        // Then look for sub-matches ('i.e. "Cranderry" in "Cranberry Vodka")
+        refined = disambigInputs.filter(n => n.toLowerCase().includes(input));
+    }
+
+    // If I've refined down to one item, set it
+    if (refined.length === 1) {
+        input = refined[0].toLowerCase();
+        if (allIngredients.find(n => n.toLowerCase() === input)) {
+            await memoryManager.RememberEntityAsync("ingredients", input);
+            disambigInputs = [];
+            return true;
+        }
+        else if (allCategories.find(n => n.toLowerCase() === input)) {
+            await memoryManager.RememberEntityAsync("category", input);
+            disambigInputs = [];
+            return true;
+        }
+        else if (allGlasses.find(n => n.toLowerCase() === input)) {
+            await memoryManager.RememberEntityAsync("glass", input);
+            disambigInputs = [];
+            return true;
+        }
+        else {
+            let cocktails = await getCocktailByName(input);
+            if (cocktails.length == 1) {
+                await setCocktails([cocktails[0].idDrink], memoryManager);
+                disambigInputs = [];
+                return true;
+            }
+        }
+    }
+    else if (refined.length > 1) {
+        await memoryManager.RememberEntitiesAsync("DisambigInputs", refined);
+        disambigInputs = [];
+        return true;
+    }
+    return false;
+}
 
 cl.AddAPICallback("ShowGlasses", async (memoryManager: ClientMemoryManager) => {
     let glasses = await getGlasses();
@@ -464,6 +511,7 @@ cl.AddAPICallback("ClearSearch", async (memoryManager: ClientMemoryManager) => {
     await memoryManager.ForgetEntityAsync("glass");
     await memoryManager.ForgetEntityAsync("type");
     await memoryManager.ForgetEntityAsync("ingredients");
+    await memoryManager.ForgetEntityAsync("noresults");
 })
 
 cl.AddAPICallback("ShowCategories", async (memoryManager: ClientMemoryManager) => {
@@ -483,38 +531,55 @@ cl.AddAPICallback("GetCocktails", async (memoryManager: ClientMemoryManager) => 
     let glass = await memoryManager.EntityValueAsync("glass");
     let type = await memoryManager.EntityValueAsync("type");
 
-    // Filter does an OR not an AND on ingrediants, so have to do it ourselves
-    if (ingredients.length > 1) {
-        let filterResults = [];
-        let allIds: string[] = [];
-        for (let ingredient of ingredients) {
-            let filter = generateFilter(ingredient, category, type, glass);
-            let cocktailIds = await getcocktails(filter);
-            filterResults.push(cocktailIds);
-            allIds = allIds.concat(cocktailIds);
-        }
-
-        // Get set of all cocktail ideas
-        allIds = [... new Set(allIds)];
-
-        // Now get ones shared across all ingredients
-        let winners = [];
-        for (let id of allIds) {
-            let isWinner = true;
-            let count = 0;
-            filterResults.forEach(f => count += (f.indexOf(id)>-1) ? 1:0)
-            if (count === ingredients.length)
-            {
-                winners.push(id);
-            }
-        }
-        await setCocktails(winners, memoryManager);
-    }
-    else {
-        let filter = generateFilter(ingredients[0], category, type, glass);
+    // Filter does an OR not an AND so have to do it ourselves
+    let filterResults = [];
+    let allIds: string[] = [];
+    for (let ingredient of ingredients) {
+        let filter = generateFilter(ingredient, null, null, null);
         let cocktailIds = await getcocktails(filter);
-        await setCocktails(cocktailIds, memoryManager);
+        filterResults.push(cocktailIds);
+        allIds = allIds.concat(cocktailIds);
     }
+    if (category) {
+        let filter = generateFilter(null, category, null, null);
+        let cocktailIds = await getcocktails(filter);
+        filterResults.push(cocktailIds);
+        allIds = allIds.concat(cocktailIds);
+    }
+    if (type) {
+        let filter = generateFilter(null, null, type, null);
+        let cocktailIds = await getcocktails(filter);
+        filterResults.push(cocktailIds);
+        allIds = allIds.concat(cocktailIds);
+    }
+    if (glass) {
+        let filter = generateFilter(null, null, null, glass);
+        let cocktailIds = await getcocktails(filter);
+        filterResults.push(cocktailIds);
+        allIds = allIds.concat(cocktailIds);
+    }
+
+    // If there's only one filter just return it
+    if (filterResults.length === 1) {
+        await setCocktails(allIds, memoryManager);
+        return;
+    }
+
+    // Get set of all cocktail ideas
+    allIds = [... new Set(allIds)];
+
+    // Now get ones shared across all ingredients
+    let winners = [];
+    for (let id of allIds) {
+        let isWinner = true;
+        let count = 0;
+        filterResults.forEach(f => count += (f.indexOf(id)>-1) ? 1:0)
+        if (count === filterResults.length)
+        {
+            winners.push(id);
+        }
+    }
+    await setCocktails(winners, memoryManager);
 })
 
 cl.AddAPICallback("ShowCocktails", async (memoryManager: ClientMemoryManager) => {
@@ -537,10 +602,6 @@ cl.AddAPICallback("ShowCocktails", async (memoryManager: ClientMemoryManager) =>
     return message
 })
 
-export async function processInput(memoryManager: ClientMemoryManager) {
-
- 
-}
 cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManager): Promise<void> => {
     // Get disambig inputs
     let disambigInputs = await memoryManager.EntityValueAsListAsync("DisambigInputs")
@@ -553,7 +614,30 @@ cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManag
     if (!unknownInput) {
         await memoryManager.ForgetEntityAsync("DisambigInputs");
     }
-            
+    
+    let chosenIngredients = await memoryManager.EntityValueAsListAsync("ingredients") as string[];
+    let chosenGlass = await memoryManager.EntityValueAsync("glass");
+    let chosenCategory = await memoryManager.EntityValueAsync("category");
+
+    // First handle removals
+    var removes = await memoryManager.EntityValueAsListAsync("removeInput");
+    for (let remove of removes) {
+        remove = remove.toLowerCase();
+        if (chosenIngredients.length > 0) {
+            let newIgredients = chosenIngredients.filter(i => i.toLocaleLowerCase() !== remove);
+            if (newIgredients.length != chosenIngredients.length) {
+                await memoryManager.RememberEntitiesAsync("ingredients", newIgredients);
+            }
+        }
+        if (chosenGlass === remove) {
+            await memoryManager.ForgetEntityAsync("glass")
+        }
+        if (chosenCategory === remove) {
+            await memoryManager.ForgetEntityAsync("category")
+        }
+        
+    }
+
     // Get list of (possibly) ambiguous apps
     var inputs = await memoryManager.EntityValueAsListAsync("input");
     
@@ -567,61 +651,35 @@ cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManag
         // Process the most recent input first
         inputs = inputs.reverse();
 
-        let ingredients = await getIngredients();
-        let categories = await getCategories();
-        let glasses = await getGlasses();
+        let allIngredients = await getIngredients();
+        let allCategories = await getCategories();
+        let allGlasses = await getGlasses();
 
         for (let input of inputs) {
             input = input.toLowerCase()
             let handled = false;
             await memoryManager.ForgetEntityAsync("input", input);
 
-            // First check if user disambiguated an input
-            if (disambigInputs.length > 0) {
-                // Look for exact match (i.e. plain "Vodka" in list of many vodka types)
-                let refined = disambigInputs.filter(n => n.toLowerCase() == input);
-                if (refined.length == 0) {
-                    // Then look for sub-matches ('i.e. "Cranderry" in "Cranberry Vodka")
-                    refined = disambigInputs.filter(n => n.toLowerCase().includes(input));
-                }
-
-                // If I've refined down to one item, set it
-                if (refined.length === 1) {
-                    input = refined[0].toLowerCase();
-                    if (ingredients.find(n => n.toLowerCase() === input)) {
-                        await memoryManager.RememberEntityAsync("ingredients", input);
-                        disambigInputs = [];
-                        handled = true;
-                    }
-                    else if (categories.find(n => n.toLowerCase() === input)) {
-                        await memoryManager.RememberEntityAsync("category", input);
-                        disambigInputs = [];
-                        handled = true;
-                    }
-                    else if (glasses.find(n => n.toLowerCase() === input)) {
-                        await memoryManager.RememberEntityAsync("glass", input);
-                        disambigInputs = [];
-                        handled = true;
-                    }
-                    else {
-                        let cocktails = await getCocktailByName(input);
-                        if (cocktails.length == 1) {
-                            await setCocktails([cocktails[0].idDrink], memoryManager);
-                            disambigInputs = [];
-                            handled = true;
-                        }
-                    }
-                }
-                else if (refined.length > 1) {
-                    await memoryManager.RememberEntitiesAsync("DisambigInputs", refined);
-                    disambigInputs = [];
-                    handled = true;
-                }
+            // If resolved ingore it
+            if (chosenIngredients.filter(i => i.toLowerCase() === input).length > 0) {
+                handled = true;
             }
+            if (chosenGlass === input) {
+                handled = true;
+            }
+            if (chosenCategory === input) {
+                handled = true;
+            }
+
+            // First check if user disambiguated an input
+            if (!handled && disambigInputs.length > 0) {
+                handled = await Disambiguate(memoryManager, input, disambigInputs);
+            }
+            // If not handles, attempt to look it up
             if (!handled) {
-                let foundIngredients = ingredients.filter(n => n.toLowerCase().includes(input));
-                let foundCategories = categories.filter(n => n.toLowerCase().includes(input));
-                let foundGlasses = glasses.filter(n => n.toLowerCase().includes(input));
+                let foundIngredients = allIngredients.filter(n => n.toLowerCase().includes(input));
+                let foundCategories = allCategories.filter(n => n.toLowerCase().includes(input));
+                let foundGlasses = allGlasses.filter(n => n.toLowerCase().includes(input));
 
                 let cocktails = await getCocktailByName(input);
                 let foundCocktails = cocktails && cocktails.length > 0 ? 
@@ -645,6 +703,9 @@ cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManag
                 }
                 else if (foundGlasses.length == 1) {
                     await memoryManager.RememberEntityAsync("glass", input);
+                }
+                else if (foundCocktails.length == 1) {
+                    await memoryManager.RememberEntityAsync("cocktails", cocktails[0].idDrink);
                 }
             }
         }
