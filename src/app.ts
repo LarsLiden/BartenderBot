@@ -430,6 +430,36 @@ export function getIngredients(): Promise<string[]> {
     });
 }
 
+export async function GetSuggestions(cocktailIds: string[], memoryManager: ClientMemoryManager) {
+
+    let chosenIngredients = await memoryManager.EntityValueAsListAsync("ingredients") as string[];
+    
+    let suggestions: string[] = [];
+    for (let id of cocktailIds) {
+        if (suggestions.length >= 5) {
+            return suggestions;
+        }
+        let cocktail = await getCocktailById(id)
+        if (cocktail) {
+            let existingIngredient = chosenIngredients.filter(i => (cocktail && i.toLowerCase() === cocktail.strIngredient1.toLowerCase()));
+            let existingSuggestion = suggestions.filter(s => (cocktail && s.toLowerCase() === cocktail.strIngredient1.toLowerCase()));
+            if (existingIngredient.length === 0 && existingSuggestion.length === 0)
+            {
+                suggestions.push(cocktail.strIngredient1);
+            }
+            else {
+                let existingIngredient = chosenIngredients.filter(i => (cocktail && i.toLowerCase() === cocktail.strIngredient2.toLowerCase()));
+                let existingSuggestion = suggestions.filter(s => (cocktail && s.toLowerCase() === cocktail.strIngredient2.toLowerCase()));
+                if (existingIngredient.length === 0 && existingSuggestion.length === 0)
+                {
+                    suggestions.push(cocktail.strIngredient2);
+                }   
+            }
+        }
+    }
+    return suggestions;
+}
+
 export async function setCocktails(cocktailIds: string[], memoryManager: ClientMemoryManager) {
     await memoryManager.ForgetEntityAsync("noresults");
     await memoryManager.RememberEntityAsync("resultcount", cocktailIds.length);
@@ -437,8 +467,12 @@ export async function setCocktails(cocktailIds: string[], memoryManager: ClientM
     if (cocktailIds.length === 0) {
         await memoryManager.RememberEntityAsync("noresults", "true");
         await memoryManager.ForgetEntityAsync("cocktails");
+        await memoryManager.ForgetEntityAsync("suggestions");
     }
     else if (cocktailIds.length > 5) {
+        await memoryManager.ForgetEntityAsync("suggestions");
+        let suggestions = await GetSuggestions(cocktailIds, memoryManager);
+        await memoryManager.RememberEntitiesAsync("suggestions", suggestions)
         await memoryManager.ForgetEntityAsync("noresults");
         await memoryManager.RememberEntityAsync("NeedRefine", "true");
         await memoryManager.ForgetEntityAsync("cocktails");
@@ -446,6 +480,7 @@ export async function setCocktails(cocktailIds: string[], memoryManager: ClientM
     else {
         await memoryManager.ForgetEntityAsync("NeedRefine")
         await memoryManager.ForgetEntityAsync("noresults");
+        await memoryManager.ForgetEntityAsync("suggestions");
         await memoryManager.RememberEntitiesAsync("cocktails", cocktailIds);
     }
 }
@@ -605,12 +640,13 @@ cl.AddAPICallback("ShowCocktails", async (memoryManager: ClientMemoryManager) =>
 cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManager): Promise<void> => {
     // Get disambig inputs
     let disambigInputs = await memoryManager.EntityValueAsListAsync("DisambigInputs")
+    let suggestions = await memoryManager.EntityValueAsListAsync("suggestions")
     let unknownInput = await memoryManager.EntityValueAsync("UnknownInput")
 
     // Clear uknown
     await memoryManager.ForgetEntityAsync("UnknownInput");
 
-    // Clear disambig only if last result wasn't uknown
+    // Clear disambig only if last result wasn't unknown
     if (!unknownInput) {
         await memoryManager.ForgetEntityAsync("DisambigInputs");
     }
@@ -675,15 +711,23 @@ cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManag
             if (!handled && disambigInputs.length > 0) {
                 handled = await Disambiguate(memoryManager, input, disambigInputs);
             }
+            if (!handled && suggestions.length > 0) {
+                handled = await Disambiguate(memoryManager, input, suggestions);
+            }
             // If not handles, attempt to look it up
             if (!handled) {
                 let foundIngredients = allIngredients.filter(n => n.toLowerCase().includes(input));
                 let foundCategories = allCategories.filter(n => n.toLowerCase().includes(input));
                 let foundGlasses = allGlasses.filter(n => n.toLowerCase().includes(input));
 
-                let cocktails = await getCocktailByName(input);
-                let foundCocktails = cocktails && cocktails.length > 0 ? 
-                    cocktails.map(idrink => idrink.strDrink) : [];
+                // Only look for cocktails by name if I have no other search criteria
+                let foundCocktails: string[] = [];
+                let cocktails: IDrink[] = [];
+                if (chosenIngredients.length === 0 && chosenGlass === null && chosenCategory === null && inputs.length == 1) {
+                    cocktails = await getCocktailByName(input);
+                    foundCocktails = cocktails && cocktails.length > 0 ? 
+                        cocktails.map(idrink => idrink.strDrink) : [];
+                }
 
                 let foundCount = foundIngredients.length + foundCategories.length + foundGlasses.length + foundCocktails.length;
                 if (foundCount == 0) {
