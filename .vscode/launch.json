@@ -12,6 +12,9 @@
             "program": "${workspaceFolder}\\lib\\app.js",
             "outFiles": [
                 "${workspaceFolder}/**/*.js"
+            ],
+            "runtimeArgs": [
+                "--preserve-symlinks"
             ]
         }
     ]

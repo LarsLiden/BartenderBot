@@ -300,6 +300,7 @@ export function getCocktailByName(cocktail: string): Promise<IDrink[]> {
     });
 }
 
+
 export function getCocktailById(cockId: string): Promise<IDrink | null> {
     return new Promise((resolve, reject) => {
         const path = `http://www.thecocktaildb.com/api/json/v1/1/lookup.php?i=${cockId}`;
@@ -337,6 +338,39 @@ export function getCocktailById(cockId: string): Promise<IDrink | null> {
         });
     });
 }
+
+export function getRandomCocktail(): Promise<IDrink | null> {
+    return new Promise((resolve, reject) => {
+        const path = `https://www.thecocktaildb.com/api/json/v1/1/random.php`;
+        request(path, function (error, response, body) {
+
+            if (error) {
+                console.error(error);
+                reject(error);
+            }
+            else {
+                try {
+                    if (body != "") {
+                        let result = JSON.parse(body) as IDrinks;
+                        if (result && result.drinks) {
+                            resolve(result.drinks[0])
+                        }
+                        else {
+                            resolve(null);
+                        }
+                    }
+                    else {
+                        resolve(null);
+                    }
+                }
+                catch (err) {
+                    resolve(null)
+                }
+            }
+        });
+    });
+}
+
 
 let glassNames: string[] = [];
 export function getGlasses(): Promise<string[]> {
@@ -623,6 +657,38 @@ cl.AddAPICallback("GetCocktails", async (memoryManager: ClientMemoryManager) => 
     await setCocktails(winners, memoryManager);
 })
 
+cl.AddAPICallback("Suggest", async (memoryManager: ClientMemoryManager) => {
+
+    await memoryManager.ForgetEntityAsync("recommend");
+
+    // If I have things to disambiguate pick one
+    let disambigInputs = await memoryManager.EntityValueAsListAsync("DisambigInputs")
+    if (disambigInputs.length > 0) {
+        let choice = Math.floor(Math.random() * disambigInputs.length);
+        await memoryManager.ForgetEntityAsync("DisambigInputs");
+        await memoryManager.ForgetEntityAsync("DisambigItem");
+        await memoryManager.RememberEntityAsync("input", disambigInputs[choice]);
+        return `I suggest ${disambigInputs[choice]}`
+    }
+
+    // If I have things to suggest pick one
+    let suggestions = await memoryManager.EntityValueAsListAsync("suggestions")
+    if (suggestions.length > 0) {
+        let choice = Math.floor(Math.random() * suggestions.length);
+        await memoryManager.ForgetEntityAsync("suggestions");
+        await memoryManager.RememberEntityAsync("input", suggestions[choice]);
+        return `I suggest ${suggestions[choice]}`
+    }
+
+    // Otherwise show a random cocktail
+    let cocktail = await getRandomCocktail()
+    if (cocktail) {
+        await memoryManager.ForgetEntityAsync("cocktails");
+        await memoryManager.RememberEntityAsync("cocktails", cocktail.idDrink);
+        return "How about this..."
+    }
+})
+
 cl.AddAPICallback("ShowCocktails", async (memoryManager: ClientMemoryManager) => {
 
     let cocktails = await memoryManager.EntityValueAsListAsync("cocktails")
@@ -651,12 +717,12 @@ cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManag
     let disambigInputs = await memoryManager.EntityValueAsListAsync("DisambigInputs")
     let suggestions = await memoryManager.EntityValueAsListAsync("suggestions")
     let unknownInput = await memoryManager.EntityValueAsync("UnknownInput")
-
+    let recommend = await memoryManager.EntityValueAsync("recommend")
     // Clear uknown
     await memoryManager.ForgetEntityAsync("UnknownInput");
 
-    // Clear disambig only if last result wasn't unknown
-    if (!unknownInput) {
+    // Clear disambig only if last result wasn't unknown or something was recommended
+    if (!unknownInput && !recommend) {
         await memoryManager.ForgetEntityAsync("DisambigInputs");
         await memoryManager.ForgetEntityAsync("DisambigItem")
     }
