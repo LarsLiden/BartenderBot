@@ -665,8 +665,6 @@ cl.AddAPICallback("Suggest", async (memoryManager: ClientMemoryManager) => {
     let disambigInputs = await memoryManager.EntityValueAsListAsync("DisambigInputs")
     if (disambigInputs.length > 0) {
         let choice = Math.floor(Math.random() * disambigInputs.length);
-        await memoryManager.ForgetEntityAsync("DisambigInputs");
-        await memoryManager.ForgetEntityAsync("DisambigItem");
         await memoryManager.RememberEntityAsync("input", disambigInputs[choice]);
         return `I suggest ${disambigInputs[choice]}`
     }
@@ -713,6 +711,7 @@ cl.AddAPICallback("ShowCocktails", async (memoryManager: ClientMemoryManager) =>
 })
 
 cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManager): Promise<void> => {
+
     // Get disambig inputs
     let disambigInputs = await memoryManager.EntityValueAsListAsync("DisambigInputs")
     let suggestions = await memoryManager.EntityValueAsListAsync("suggestions")
