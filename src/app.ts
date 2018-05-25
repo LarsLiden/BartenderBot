@@ -466,7 +466,7 @@ export function getIngredients(): Promise<string[]> {
 
 export async function GetSuggestions(cocktailIds: string[], memoryManager: ClientMemoryManager) {
 
-    let chosenIngredients = await memoryManager.EntityValueAsListAsync("ingredients") as string[];
+    let chosenIngredients = memoryManager.EntityValueAsList("ingredients") as string[];
     
     let suggestions: string[] = [];
     for (let id of cocktailIds) {
@@ -495,27 +495,27 @@ export async function GetSuggestions(cocktailIds: string[], memoryManager: Clien
 }
 
 export async function setCocktails(cocktailIds: string[], memoryManager: ClientMemoryManager) {
-    await memoryManager.ForgetEntityAsync("noresults");
-    await memoryManager.RememberEntityAsync("resultcount", cocktailIds.length);
+    memoryManager.ForgetEntity("noresults");
+    memoryManager.RememberEntity("resultcount", cocktailIds.length);
 
     if (cocktailIds.length === 0) {
-        await memoryManager.RememberEntityAsync("noresults", "true");
-        await memoryManager.ForgetEntityAsync("cocktails");
-        await memoryManager.ForgetEntityAsync("suggestions");
+        memoryManager.RememberEntity("noresults", "true");
+        memoryManager.ForgetEntity("cocktails");
+        memoryManager.ForgetEntity("suggestions");
     }
     else if (cocktailIds.length > 5) {
-        await memoryManager.ForgetEntityAsync("suggestions");
+        memoryManager.ForgetEntity("suggestions");
         let suggestions = await GetSuggestions(cocktailIds, memoryManager);
-        await memoryManager.RememberEntitiesAsync("suggestions", suggestions)
-        await memoryManager.ForgetEntityAsync("noresults");
-        await memoryManager.RememberEntityAsync("NeedRefine", "true");
-        await memoryManager.ForgetEntityAsync("cocktails");
+        memoryManager.RememberEntities("suggestions", suggestions)
+        memoryManager.ForgetEntity("noresults");
+        memoryManager.RememberEntity("NeedRefine", "true");
+        memoryManager.ForgetEntity("cocktails");
     }
     else {
-        await memoryManager.ForgetEntityAsync("NeedRefine")
-        await memoryManager.ForgetEntityAsync("noresults");
-        await memoryManager.ForgetEntityAsync("suggestions");
-        await memoryManager.RememberEntitiesAsync("cocktails", cocktailIds);
+        memoryManager.ForgetEntity("NeedRefine")
+        memoryManager.ForgetEntity("noresults");
+        memoryManager.ForgetEntity("suggestions");
+        memoryManager.RememberEntities("cocktails", cocktailIds);
     }
 }
 
@@ -536,17 +536,17 @@ async function Disambiguate(memoryManager: ClientMemoryManager, input: string, d
     if (refined.length === 1) {
         input = refined[0].toLowerCase();
         if (allIngredients.find(n => n.toLowerCase() === input)) {
-            await memoryManager.RememberEntityAsync("ingredients", input);
+            memoryManager.RememberEntity("ingredients", input);
             disambigInputs = [];
             return true;
         }
         else if (allCategories.find(n => n.toLowerCase() === input)) {
-            await memoryManager.RememberEntityAsync("category", input);
+            memoryManager.RememberEntity("category", input);
             disambigInputs = [];
             return true;
         }
         else if (allGlasses.find(n => n.toLowerCase() === input)) {
-            await memoryManager.RememberEntityAsync("glass", input);
+            memoryManager.RememberEntity("glass", input);
             disambigInputs = [];
             return true;
         }
@@ -560,8 +560,8 @@ async function Disambiguate(memoryManager: ClientMemoryManager, input: string, d
         }
     }
     else if (refined.length > 1) {
-        await memoryManager.RememberEntityAsync("DisambigItem", input)
-        await memoryManager.RememberEntitiesAsync("DisambigInputs", refined);
+        memoryManager.RememberEntity("DisambigItem", input)
+        memoryManager.RememberEntities("DisambigInputs", refined);
         disambigInputs = [];
         return false;
     }
@@ -569,15 +569,15 @@ async function Disambiguate(memoryManager: ClientMemoryManager, input: string, d
 }
 
 export async function Reset(memoryManager: ClientMemoryManager) {
-    await memoryManager.ForgetEntityAsync("cocktails");
-    await memoryManager.ForgetEntityAsync("resultcount");
-    await memoryManager.ForgetEntityAsync("NeedRefine");
-    await memoryManager.ForgetEntityAsync("category");
-    await memoryManager.ForgetEntityAsync("glass");
-    await memoryManager.ForgetEntityAsync("type");
-    await memoryManager.ForgetEntityAsync("ingredients");
-    await memoryManager.ForgetEntityAsync("noresults");
-    await memoryManager.ForgetEntityAsync("suggestions");
+    memoryManager.ForgetEntity("cocktails");
+    memoryManager.ForgetEntity("resultcount");
+    memoryManager.ForgetEntity("NeedRefine");
+    memoryManager.ForgetEntity("category");
+    memoryManager.ForgetEntity("glass");
+    memoryManager.ForgetEntity("type");
+    memoryManager.ForgetEntity("ingredients");
+    memoryManager.ForgetEntity("noresults");
+    memoryManager.ForgetEntity("suggestions");
 }
 
 cl.AddAPICallback("ShowGlasses", async (memoryManager: ClientMemoryManager) => {
@@ -601,10 +601,10 @@ cl.AddAPICallback("ShowIngredients", async (memoryManager: ClientMemoryManager) 
 
 cl.AddAPICallback("GetCocktails", async (memoryManager: ClientMemoryManager) => {
 
-    let ingredients = await memoryManager.EntityValueAsListAsync("ingredients");
-    let category = await memoryManager.EntityValueAsync("category");
-    let glass = await memoryManager.EntityValueAsync("glass");
-    let type = await memoryManager.EntityValueAsync("type");
+    let ingredients = memoryManager.EntityValueAsList("ingredients");
+    let category = memoryManager.EntityValue("category");
+    let glass = memoryManager.EntityValue("glass");
+    let type = memoryManager.EntityValue("type");
 
     // Filter does an OR not an AND so have to do it ourselves
     let filterResults = [];
@@ -659,37 +659,37 @@ cl.AddAPICallback("GetCocktails", async (memoryManager: ClientMemoryManager) => 
 
 cl.AddAPICallback("Suggest", async (memoryManager: ClientMemoryManager) => {
 
-    await memoryManager.ForgetEntityAsync("recommend");
+    memoryManager.ForgetEntity("recommend");
 
     // If I have things to disambiguate pick one
-    let disambigInputs = await memoryManager.EntityValueAsListAsync("DisambigInputs")
+    let disambigInputs = memoryManager.EntityValueAsList("DisambigInputs")
     if (disambigInputs.length > 0) {
         let choice = Math.floor(Math.random() * disambigInputs.length);
-        await memoryManager.RememberEntityAsync("input", disambigInputs[choice]);
+        memoryManager.RememberEntity("input", disambigInputs[choice]);
         return `I suggest ${disambigInputs[choice]}`
     }
 
     // If I have things to suggest pick one
-    let suggestions = await memoryManager.EntityValueAsListAsync("suggestions")
+    let suggestions = memoryManager.EntityValueAsList("suggestions")
     if (suggestions.length > 0) {
         let choice = Math.floor(Math.random() * suggestions.length);
-        await memoryManager.ForgetEntityAsync("suggestions");
-        await memoryManager.RememberEntityAsync("input", suggestions[choice]);
+        memoryManager.ForgetEntity("suggestions");
+        memoryManager.RememberEntity("input", suggestions[choice]);
         return `I suggest ${suggestions[choice]}`
     }
 
     // Otherwise show a random cocktail
     let cocktail = await getRandomCocktail()
     if (cocktail) {
-        await memoryManager.ForgetEntityAsync("cocktails");
-        await memoryManager.RememberEntityAsync("cocktails", cocktail.idDrink);
+        memoryManager.ForgetEntity("cocktails");
+        memoryManager.RememberEntity("cocktails", cocktail.idDrink);
         return "How about this..."
     }
 })
 
 cl.AddAPICallback("ShowCocktails", async (memoryManager: ClientMemoryManager) => {
 
-    let cocktails = await memoryManager.EntityValueAsListAsync("cocktails")
+    let cocktails = memoryManager.EntityValueAsList("cocktails")
 
     let attachments = []
 
@@ -713,51 +713,51 @@ cl.AddAPICallback("ShowCocktails", async (memoryManager: ClientMemoryManager) =>
 cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManager): Promise<void> => {
 
     // Get disambig inputs
-    let disambigInputs = await memoryManager.EntityValueAsListAsync("DisambigInputs")
-    let suggestions = await memoryManager.EntityValueAsListAsync("suggestions")
-    let unknownInput = await memoryManager.EntityValueAsync("UnknownInput")
-    let recommend = await memoryManager.EntityValueAsync("recommend")
+    let disambigInputs = memoryManager.EntityValueAsList("DisambigInputs")
+    let suggestions = memoryManager.EntityValueAsList("suggestions")
+    let unknownInput = memoryManager.EntityValue("UnknownInput")
+    let recommend = memoryManager.EntityValue("recommend")
     // Clear uknown
-    await memoryManager.ForgetEntityAsync("UnknownInput");
+    memoryManager.ForgetEntity("UnknownInput");
 
     // Clear disambig only if last result wasn't unknown or something was recommended
     if (!unknownInput && !recommend) {
-        await memoryManager.ForgetEntityAsync("DisambigInputs");
-        await memoryManager.ForgetEntityAsync("DisambigItem")
+        memoryManager.ForgetEntity("DisambigInputs");
+        memoryManager.ForgetEntity("DisambigItem")
     }
     
-    let chosenIngredients = await memoryManager.EntityValueAsListAsync("ingredients") as string[];
-    let chosenGlass = await memoryManager.EntityValueAsync("glass");
-    let chosenCategory = await memoryManager.EntityValueAsync("category");
+    let chosenIngredients = memoryManager.EntityValueAsList("ingredients") as string[];
+    let chosenGlass = memoryManager.EntityValue("glass");
+    let chosenCategory = memoryManager.EntityValue("category");
 
     // First handle removals
-    var removes = await memoryManager.EntityValueAsListAsync("removeInput");
+    var removes = memoryManager.EntityValueAsList("removeInput");
     for (let remove of removes) {
         remove = remove.toLowerCase();
         if (chosenIngredients.length > 0) {
             let newIgredients = chosenIngredients.filter(i => i.toLocaleLowerCase() !== remove);
             if (newIgredients.length != chosenIngredients.length) {
-                await memoryManager.RememberEntitiesAsync("ingredients", newIgredients);
+                memoryManager.RememberEntities("ingredients", newIgredients);
             }
         }
         if (chosenGlass === remove) {
-            await memoryManager.ForgetEntityAsync("glass")
+            memoryManager.ForgetEntity("glass")
         }
         if (chosenCategory === remove) {
-            await memoryManager.ForgetEntityAsync("category")
+            memoryManager.ForgetEntity("category")
         }
         
     }
 
     // Get list of (possibly) ambiguous apps
-    var inputs = await memoryManager.EntityValueAsListAsync("input");
+    var inputs = memoryManager.EntityValueAsList("input");
     
     if (inputs.length > 0) {
         // If I have new inputs, clear my last search results
-        await memoryManager.ForgetEntityAsync("NeedRefine");
-        await memoryManager.ForgetEntityAsync("cocktails");
-        await memoryManager.ForgetEntityAsync("resultcount");
-        await memoryManager.ForgetEntityAsync("noresults");
+        memoryManager.ForgetEntity("NeedRefine");
+        memoryManager.ForgetEntity("cocktails");
+        memoryManager.ForgetEntity("resultcount");
+        memoryManager.ForgetEntity("noresults");
         
         // Process the most recent input first
         inputs = inputs.reverse();
@@ -769,7 +769,7 @@ cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManag
         for (let input of inputs) {
             input = input.toLowerCase()
             let handled = false;
-            await memoryManager.ForgetEntityAsync("input", input);
+            memoryManager.ForgetEntity("input", input);
 
             // If resolved ingore it
             if (chosenIngredients.filter(i => i.toLowerCase() === input).length > 0) {
@@ -806,26 +806,26 @@ cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManag
 
                 let foundCount = foundIngredients.length + foundCategories.length + foundGlasses.length + foundCocktails.length;
                 if (foundCount == 0) {
-                    await memoryManager.RememberEntityAsync("UnknownInput", input);
+                    memoryManager.RememberEntity("UnknownInput", input);
                     break;
                 }
                 else if (foundCount > 1) {
                     let choices = foundIngredients.concat(foundCategories, foundGlasses, foundCocktails)
-                    await memoryManager.RememberEntityAsync("DisambigItem", input)
-                    await memoryManager.RememberEntitiesAsync("DisambigInputs", choices);
+                    memoryManager.RememberEntity("DisambigItem", input)
+                    memoryManager.RememberEntities("DisambigInputs", choices);
                     break;
                 }
                 else if (foundIngredients.length == 1) {
-                    await memoryManager.RememberEntityAsync("ingredients", input);
+                    memoryManager.RememberEntity("ingredients", input);
                 }
                 else if (foundCategories.length == 1) {
-                    await memoryManager.RememberEntityAsync("category", input);
+                    memoryManager.RememberEntity("category", input);
                 }
                 else if (foundGlasses.length == 1) {
-                    await memoryManager.RememberEntityAsync("glass", input);
+                    memoryManager.RememberEntity("glass", input);
                 }
                 else if (foundCocktails.length == 1) {
-                    await memoryManager.RememberEntityAsync("cocktails", cocktails[0].idDrink);
+                    memoryManager.RememberEntity("cocktails", cocktails[0].idDrink);
                 }
             }
         }
