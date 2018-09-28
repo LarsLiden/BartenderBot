@@ -3,38 +3,25 @@
  * Licensed under the MIT License.
  */
 import * as path from 'path'
-import * as restify from 'restify'
-import * as BB from 'botbuilder'
+import * as express from 'express'
 import * as request from 'request'
 import { BotFrameworkAdapter } from 'botbuilder'
-import { ConversationLearner, ClientMemoryManager, models, FileStorage } from '@conversationlearner/sdk'
+import { ConversationLearner, ClientMemoryManager, FileStorage } from '@conversationlearner/sdk'
+import chalk from 'chalk'
 import config from './config'
-import { v1String } from 'uuid/interfaces';
+import * as BB from 'botbuilder'
 
 //===================
 // Create Bot server
 //===================
-const server = restify.createServer({
-    name: 'BOT Server'
-});
+const server = express()
 
-console.log(`BotPort: ${config.botPort} / ${server.name} ${server.url}`)
-
-server.on('uncaughtException', (req, res, route, err) => {
-    console.log(err); // Logs the error
- });
-
-server.listen(config.botPort, () => {
-    console.log(`${server.name} listening to ${server.url}`);
-});
-
-const { bfAppId, bfAppPassword, clAppId, ...clOptions } = config
+const { bfAppId, bfAppPassword, modelId, ...clOptions } = config
 
 //==================
 // Create Adapter
 //==================
 const adapter = new BotFrameworkAdapter({ appId: bfAppId, appPassword: bfAppPassword });
-
 
 //==================================
 // Storage 
@@ -47,8 +34,15 @@ let fileStorage = new FileStorage(path.join(__dirname, 'storage'))
 //==================================
 // Initialize Conversation Learner
 //==================================
-ConversationLearner.Init(clOptions, fileStorage);
-let cl = new ConversationLearner(clAppId);
+const sdkRouter = ConversationLearner.Init(clOptions, fileStorage)
+
+const includeSdk = ['development', 'test'].includes(process.env.NODE_ENV || '')
+if (includeSdk) {
+    console.log(chalk.cyanBright(`Adding /sdk routes`))
+    server.use('/sdk', sdkRouter)
+}
+
+const cl = new ConversationLearner(modelId)
 
 //===============================
 // Cocktail 
@@ -580,134 +574,156 @@ export async function Reset(memoryManager: ClientMemoryManager) {
     memoryManager.ForgetEntity("suggestions");
 }
 
-cl.AddAPICallback("ShowGlasses", async (memoryManager: ClientMemoryManager) => {
-    let glasses = await getGlasses();
-    return glasses.join(", ");
+cl.AddCallback({ 
+    name: "ShowGlasses",
+    render: async (memoryManager: ClientMemoryManager) => {
+        let glasses = await getGlasses();
+        return glasses.join(", ");
+    }
 })
 
-cl.AddAPICallback("ClearSearch", async (memoryManager: ClientMemoryManager) => {
-  await Reset(memoryManager)
+cl.AddCallback({
+    name: "ClearSearch", 
+    logic: async (memoryManager: ClientMemoryManager) => {
+         await Reset(memoryManager)
+    }
 })
 
-cl.AddAPICallback("ShowCategories", async (memoryManager: ClientMemoryManager) => {
-    let categories = await getCategories();
-    return categories.join(", ");
+cl.AddCallback({
+    name: "ShowCategories", 
+    render: async (memoryManager: ClientMemoryManager) => {
+        let categories = await getCategories();
+        return categories.join(", ");
+    }
 })
 
-cl.AddAPICallback("ShowIngredients", async (memoryManager: ClientMemoryManager) => {
-    let ingredients = await getIngredients();
-    return ingredients.join(", ");
+cl.AddCallback({
+    name: "ShowIngredients", 
+    render: async (memoryManager: ClientMemoryManager) => {
+        let ingredients = await getIngredients();
+        return ingredients.join(", ");
+    }
 })
 
-cl.AddAPICallback("GetCocktails", async (memoryManager: ClientMemoryManager) => {
+cl.AddCallback({
+    name: "GetCocktails", 
+    logic: async (memoryManager: ClientMemoryManager) => {
 
-    let ingredients = memoryManager.EntityValueAsList("ingredients");
-    let category = memoryManager.EntityValue("category");
-    let glass = memoryManager.EntityValue("glass");
-    let type = memoryManager.EntityValue("type");
+        let ingredients = memoryManager.EntityValueAsList("ingredients");
+        let category = memoryManager.EntityValue("category");
+        let glass = memoryManager.EntityValue("glass");
+        let type = memoryManager.EntityValue("type");
 
-    // Filter does an OR not an AND so have to do it ourselves
-    let filterResults = [];
-    let allIds: string[] = [];
-    for (let ingredient of ingredients) {
-        let filter = generateFilter(ingredient, null, null, null);
-        let cocktailIds = await getcocktails(filter);
-        filterResults.push(cocktailIds);
-        allIds = allIds.concat(cocktailIds);
-    }
-    if (category) {
-        let filter = generateFilter(null, category, null, null);
-        let cocktailIds = await getcocktails(filter);
-        filterResults.push(cocktailIds);
-        allIds = allIds.concat(cocktailIds);
-    }
-    if (type) {
-        let filter = generateFilter(null, null, type, null);
-        let cocktailIds = await getcocktails(filter);
-        filterResults.push(cocktailIds);
-        allIds = allIds.concat(cocktailIds);
-    }
-    if (glass) {
-        let filter = generateFilter(null, null, null, glass);
-        let cocktailIds = await getcocktails(filter);
-        filterResults.push(cocktailIds);
-        allIds = allIds.concat(cocktailIds);
-    }
-
-    // If there's only one filter just return it
-    if (filterResults.length === 1) {
-        await setCocktails(allIds, memoryManager);
-        return;
-    }
-
-    // Get set of all cocktail ideas
-    allIds = [... new Set(allIds)];
-
-    // Now get ones shared across all ingredients
-    let winners = [];
-    for (let id of allIds) {
-        let isWinner = true;
-        let count = 0;
-        filterResults.forEach(f => count += (f.indexOf(id)>-1) ? 1:0)
-        if (count === filterResults.length)
-        {
-            winners.push(id);
+        // Filter does an OR not an AND so have to do it ourselves
+        let filterResults = [];
+        let allIds: string[] = [];
+        for (let ingredient of ingredients) {
+            let filter = generateFilter(ingredient, null, null, null);
+            let cocktailIds = await getcocktails(filter);
+            filterResults.push(cocktailIds);
+            allIds = allIds.concat(cocktailIds);
         }
+        if (category) {
+            let filter = generateFilter(null, category, null, null);
+            let cocktailIds = await getcocktails(filter);
+            filterResults.push(cocktailIds);
+            allIds = allIds.concat(cocktailIds);
+        }
+        if (type) {
+            let filter = generateFilter(null, null, type, null);
+            let cocktailIds = await getcocktails(filter);
+            filterResults.push(cocktailIds);
+            allIds = allIds.concat(cocktailIds);
+        }
+        if (glass) {
+            let filter = generateFilter(null, null, null, glass);
+            let cocktailIds = await getcocktails(filter);
+            filterResults.push(cocktailIds);
+            allIds = allIds.concat(cocktailIds);
+        }
+
+        // If there's only one filter just return it
+        if (filterResults.length === 1) {
+            await setCocktails(allIds, memoryManager);
+            return;
+        }
+
+        // Get set of all cocktail ideas
+        allIds = [... new Set(allIds)];
+
+        // Now get ones shared across all ingredients
+        let winners = [];
+        for (let id of allIds) {
+            let isWinner = true;
+            let count = 0;
+            filterResults.forEach(f => count += (f.indexOf(id)>-1) ? 1:0)
+            if (count === filterResults.length)
+            {
+                winners.push(id);
+            }
+        }
+        await setCocktails(winners, memoryManager);
     }
-    await setCocktails(winners, memoryManager);
 })
 
-cl.AddAPICallback("Suggest", async (memoryManager: ClientMemoryManager) => {
+cl.AddCallback({
+    name: "Suggest", 
+    render: async (memoryManager: ClientMemoryManager) => {
 
-    memoryManager.ForgetEntity("recommend");
+        memoryManager.ForgetEntity("recommend");
 
-    // If I have things to disambiguate pick one
-    let disambigInputs = memoryManager.EntityValueAsList("DisambigInputs")
-    if (disambigInputs.length > 0) {
-        let choice = Math.floor(Math.random() * disambigInputs.length);
-        memoryManager.RememberEntity("input", disambigInputs[choice]);
-        return `I suggest ${disambigInputs[choice]}`
-    }
+        // If I have things to disambiguate pick one
+        let disambigInputs = memoryManager.EntityValueAsList("DisambigInputs")
+        if (disambigInputs.length > 0) {
+            let choice = Math.floor(Math.random() * disambigInputs.length);
+            memoryManager.RememberEntity("input", disambigInputs[choice]);
+            return `I suggest ${disambigInputs[choice]}`
+        }
 
-    // If I have things to suggest pick one
-    let suggestions = memoryManager.EntityValueAsList("suggestions")
-    if (suggestions.length > 0) {
-        let choice = Math.floor(Math.random() * suggestions.length);
-        memoryManager.ForgetEntity("suggestions");
-        memoryManager.RememberEntity("input", suggestions[choice]);
-        return `I suggest ${suggestions[choice]}`
-    }
+        // If I have things to suggest pick one
+        let suggestions = memoryManager.EntityValueAsList("suggestions")
+        if (suggestions.length > 0) {
+            let choice = Math.floor(Math.random() * suggestions.length);
+            memoryManager.ForgetEntity("suggestions");
+            memoryManager.RememberEntity("input", suggestions[choice]);
+            return `I suggest ${suggestions[choice]}`
+        }
 
-    // Otherwise show a random cocktail
-    let cocktail = await getRandomCocktail()
-    if (cocktail) {
-        memoryManager.ForgetEntity("cocktails");
-        memoryManager.RememberEntity("cocktails", cocktail.idDrink);
-        return "How about this..."
-    }
-})
-
-cl.AddAPICallback("ShowCocktails", async (memoryManager: ClientMemoryManager) => {
-
-    let cocktails = memoryManager.EntityValueAsList("cocktails")
-
-    let attachments = []
-
-    for (let id of cocktails) {
-        let cocktail = await getCocktailById(id)
+        // Otherwise show a random cocktail
+        let cocktail = await getRandomCocktail()
         if (cocktail) {
-            let card = renderDrink(cocktail);
-            attachments.push(BB.CardFactory.adaptiveCard(card))
+            memoryManager.ForgetEntity("cocktails");
+            memoryManager.RememberEntity("cocktails", cocktail.idDrink);
+            return "How about this..."
         }
+
+        return "I'm confused."
     }
+})
 
-    const message = BB.MessageFactory.list(attachments)
-    message.text = undefined
-    message.attachmentLayout = "carousel"
+cl.AddCallback({
+    name: "ShowCocktails", 
+    render: async (memoryManager: ClientMemoryManager) => {
+        let cocktails = memoryManager.EntityValueAsList("cocktails")
 
-    await Reset(memoryManager);
+        let attachments = []
 
-    return message
+        for (let id of cocktails) {
+            let cocktail = await getCocktailById(id)
+            if (cocktail) {
+                let card = renderDrink(cocktail);
+                attachments.push(BB.CardFactory.adaptiveCard(card))
+            }
+        }
+
+        const message = BB.MessageFactory.list(attachments)
+        message.text = undefined
+        message.attachmentLayout = "carousel"
+
+        await Reset(memoryManager);
+
+        return message
+    }
 })
 
 cl.EntityDetectionCallback(async (text: string, memoryManager: ClientMemoryManager): Promise<void> => {
